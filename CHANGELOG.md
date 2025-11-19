@@ -6,6 +6,10 @@
 
 - Adds tenanted database rollback support via `ActiveRecord::Tenanted::DatabaseTasks#rollback_all` / `#rollback_tenant` and the `db:rollback:DBNAME` rake task. `STEP` controls how many migrations to revert (defaults to 1); `ARTENANT` restricts the rollback to a single tenant.
 
+### Fixed
+
+- Prevent `db:rollback` from raising `ActiveRecord::Tenanted::NoTenantError` when only tenanted databases are configured.
+
 
 ## v0.8.0 / 2026-08-04
 
