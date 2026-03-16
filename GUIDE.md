@@ -287,6 +287,7 @@ production:
   primary:
     adapter: postgresql
     database: myapp_production  # Static database name
+    schema_name_pattern: account-%{tenant}
     tenanted: true
     host: localhost
 ```
@@ -296,7 +297,7 @@ In this configuration:
 - Each tenant gets its own schema with the prefix `account-` (e.g., `account-tenant1`, `account-tenant2`)
 - The `schema_search_path` is set automatically to isolate tenants
 - All tables and data are stored within the tenant-specific schema
-- **Auto-detection:** Automatically used when database name does NOT contain `%{tenant}`
+- **Selection:** Enabled when `schema_name_pattern` is configured, or by default for static database names
 
 **Advantages:**
 - **Resource Efficient**: Single database process serves all tenants
@@ -365,7 +366,7 @@ In this configuration:
 - You're following PostgreSQL best practices
 - Tenants share the same configuration needs
 - You want simpler operations (backup, monitoring, etc.)
-- Configuration: Use a static database name (e.g., `database: myapp_production`)
+- Configuration: Use a static database name and a schema pattern (e.g., `database: myapp_production`, `schema_name_pattern: account-%{tenant}`)
 
 **Use Database Strategy when:**
 - You have few tenants (less than 100)

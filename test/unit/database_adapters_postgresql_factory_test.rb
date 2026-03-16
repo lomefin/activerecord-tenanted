@@ -4,6 +4,19 @@ require "test_helper"
 
 describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Factory do
   describe "strategy selection" do
+    test "returns Schema adapter when schema_name_pattern is configured" do
+      config_hash = {
+        adapter: "postgresql",
+        database: "test",
+        schema_name_pattern: "account-%{tenant}",
+      }
+      db_config = ActiveRecord::DatabaseConfigurations::HashConfig.new("test", "primary", config_hash)
+
+      adapter = ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Factory.new(db_config)
+
+      assert_instance_of ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema, adapter
+    end
+
     test "returns Database adapter when database name contains %{tenant}" do
       config_hash = { adapter: "postgresql", database: "test_%{tenant}" }
       db_config = ActiveRecord::DatabaseConfigurations::HashConfig.new("test", "primary", config_hash)

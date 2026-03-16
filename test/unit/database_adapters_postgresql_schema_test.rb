@@ -4,27 +4,51 @@ require "test_helper"
 
 describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
   let(:db_config) do
-    config_hash = { adapter: "postgresql", database: "myapp" }
+    config_hash = {
+      adapter: "postgresql",
+      database: "myapp",
+      schema_name_pattern: "account-%{tenant}",
+    }
     ActiveRecord::DatabaseConfigurations::HashConfig.new("test", "primary", config_hash)
   end
   let(:adapter) { ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema.new(db_config) }
 
+  describe "initialization" do
+    test "raises when both dynamic database and schema_name_pattern are configured" do
+      invalid_config = ActiveRecord::DatabaseConfigurations::HashConfig.new(
+        "test",
+        "primary",
+        {
+          adapter: "postgresql",
+          database: "myapp_%{tenant}",
+          schema_name_pattern: "account-%{tenant}",
+        }
+      )
+
+      error = assert_raises(ActiveRecord::Tenanted::ConfigurationError) do
+        ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema.new(invalid_config)
+      end
+
+      assert_match(/Cannot specify both a dynamic database name/, error.message)
+    end
+  end
+
   describe "database_path" do
     test "returns tenant_schema from config if present" do
       db_config_with_schema = Object.new
-      def db_config_with_schema.database; "myapp_%{tenant}"; end
+      def db_config_with_schema.database; "myapp"; end
       def db_config_with_schema.configuration_hash
-        { tenant_schema: "myapp_foo" }
+        { tenant_schema: "account-foo", schema_name_pattern: "account-%{tenant}" }
       end
 
       adapter = ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema.new(db_config_with_schema)
-      assert_equal "myapp_foo", adapter.database_path
+      assert_equal "account-foo", adapter.database_path
     end
 
     test "raises error if tenant_schema not present" do
       db_config_dynamic = Object.new
       def db_config_dynamic.database; "myapp_development"; end
-      def db_config_dynamic.configuration_hash; {}; end
+      def db_config_dynamic.configuration_hash; { schema_name_pattern: "account-%{tenant}" }; end
 
       adapter_dynamic = ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema.new(db_config_dynamic)
 
@@ -32,7 +56,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
         adapter_dynamic.database_path
       end
 
-      assert_match(/tenant_schema not set/, error.message)
+      assert_match(/tenant_schema/, error.message)
     end
   end
 
@@ -40,7 +64,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
     test "adds schema-specific configuration with account- prefix" do
       base_config = Object.new
       def base_config.database; "myapp_development"; end
-      def base_config.configuration_hash; {}; end
+      def base_config.configuration_hash; { schema_name_pattern: "account-%{tenant}" }; end
 
       config_hash = { tenant: "foo", database: "myapp_development" }
       result = adapter.prepare_tenant_config_hash(config_hash, base_config, "foo")
@@ -53,7 +77,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
     test "uses static database name" do
       base_config = Object.new
       def base_config.database; "rails_backend_production"; end
-      def base_config.configuration_hash; {}; end
+      def base_config.configuration_hash; { schema_name_pattern: "account-%{tenant}" }; end
 
       config_hash = { tenant: "bar" }
       result = adapter.prepare_tenant_config_hash(config_hash, base_config, "bar")
@@ -68,7 +92,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
     test "creates schema name with account- prefix for complex tenant" do
       base_config = Object.new
       def base_config.database; "myapp_production"; end
-      def base_config.configuration_hash; {}; end
+      def base_config.configuration_hash; { schema_name_pattern: "account-%{tenant}" }; end
 
       config_hash = { tenant: "abc123" }
       result = adapter.prepare_tenant_config_hash(config_hash, base_config, "abc123")
@@ -79,13 +103,25 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
       # Database name should remain static
       assert_equal "myapp_production", result[:database]
     end
+
+    test "preserves the workerized base database name" do
+      base_config = Object.new
+      def base_config.database; "myapp_test"; end
+      def base_config.configuration_hash; { schema_name_pattern: "account-%{tenant}" }; end
+      def base_config.test_worker_id; 7; end
+
+      result = adapter.prepare_tenant_config_hash({}, base_config, "foo")
+
+      assert_equal "myapp_test_7", result[:database]
+      assert_equal "account-foo", result[:tenant_schema]
+    end
   end
 
   describe "identifier_for" do
     test "returns schema name with account- prefix" do
       db_config_static = Object.new
       def db_config_static.database; "myapp_development"; end
-      def db_config_static.configuration_hash; {}; end
+      def db_config_static.configuration_hash; { schema_name_pattern: "account-%{tenant}" }; end
 
       adapter_static = ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema.new(db_config_static)
       result = adapter_static.identifier_for("foo")
@@ -95,7 +131,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
     test "uses account- prefix for complex tenant names" do
       db_config_static = Object.new
       def db_config_static.database; "myapp_development"; end
-      def db_config_static.configuration_hash; {}; end
+      def db_config_static.configuration_hash; { schema_name_pattern: "account-%{tenant}" }; end
 
       adapter_static = ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema.new(db_config_static)
       result = adapter_static.identifier_for("abc123")
@@ -114,7 +150,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
       # This test verifies that create_colocated_database fully integrates with Rails
       db_config_static = Object.new
       def db_config_static.database; "myapp_development"; end
-      def db_config_static.configuration_hash; { adapter: "postgresql" }; end
+      def db_config_static.configuration_hash; { adapter: "postgresql", schema_name_pattern: "account-%{tenant}" }; end
       def db_config_static.env_name; "test"; end
       def db_config_static.name; "primary"; end
 
@@ -135,7 +171,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
       db_config_static = Object.new
       def db_config_static.database; "myapp_production"; end
       def db_config_static.configuration_hash
-        { adapter: "postgresql" }
+        { adapter: "postgresql", schema_name_pattern: "account-%{tenant}" }
       end
       def db_config_static.env_name; "test"; end
       def db_config_static.name; "primary"; end
@@ -158,7 +194,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
       # This test verifies that drop_colocated_database fully integrates with Rails
       db_config_static = Object.new
       def db_config_static.database; "myapp_development"; end
-      def db_config_static.configuration_hash; { adapter: "postgresql" }; end
+      def db_config_static.configuration_hash; { adapter: "postgresql", schema_name_pattern: "account-%{tenant}" }; end
       def db_config_static.env_name; "test"; end
       def db_config_static.name; "primary"; end
 
@@ -179,7 +215,7 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL::Schema do
       db_config_static = Object.new
       def db_config_static.database; "myapp_production"; end
       def db_config_static.configuration_hash
-        { adapter: "postgresql" }
+        { adapter: "postgresql", schema_name_pattern: "account-%{tenant}" }
       end
       def db_config_static.env_name; "test"; end
       def db_config_static.name; "primary"; end

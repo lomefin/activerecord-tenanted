@@ -26,6 +26,7 @@ module ActiveRecord
 
           def initialize(db_config)
             super
+            validate_configuration
           end
 
           def tenant_databases
@@ -41,7 +42,7 @@ module ActiveRecord
                   SELECT schema_name#{' '}
                   FROM information_schema.schemata#{' '}
                   WHERE schema_name LIKE '#{connection.quote_string(schema_pattern)}'
-                    AND schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                    AND schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public')
                   ORDER BY schema_name
                 SQL
 
@@ -55,8 +56,8 @@ module ActiveRecord
                     tenant_name = match[1]
 
                     # Strip test_worker_id suffix if present
-                    if db_config.test_worker_id
-                      test_worker_suffix = "_#{db_config.test_worker_id}"
+                    if current_test_worker_id
+                      test_worker_suffix = "_#{current_test_worker_id}"
                       tenant_name = tenant_name.delete_suffix(test_worker_suffix)
                     end
 
@@ -110,7 +111,7 @@ module ActiveRecord
             # We strip out tenanted-specific keys to create a regular Rails
             # config Rails' create method will handle connection, logging, etc.
             base_config_hash = db_config.configuration_hash
-              .except(:tenanted, :tenant_schema, :schema_search_path)
+              .except(:tenanted, :tenant_schema, :schema_search_path, :schema_name_pattern)
               .merge(database: base_db_name)
 
             base_create_config = ActiveRecord::DatabaseConfigurations::HashConfig.new(
@@ -131,7 +132,7 @@ module ActiveRecord
             # We strip out tenanted-specific keys to create a regular Rails config
             # Rails' drop method will handle connection, termination, logging, etc.
             base_config_hash = db_config.configuration_hash
-              .except(:tenanted, :tenant_schema, :schema_search_path)
+              .except(:tenanted, :tenant_schema, :schema_search_path, :schema_name_pattern)
               .merge(database: base_db_name)
 
             base_drop_config = ActiveRecord::DatabaseConfigurations::HashConfig.new(
@@ -160,16 +161,16 @@ module ActiveRecord
           end
 
           def database_path
-            # Returns the schema name for this tenant
-            # For PostgreSQL with schema-based tenancy, we store the schema name separately
-            # because db_config.database is the base database name
-            db_config.configuration_hash[:tenant_schema] || db_config.database
+            db_config.configuration_hash[:tenant_schema] || raise(
+              ActiveRecord::Tenanted::NoTenantError,
+              "PostgreSQL schema strategy requires tenant_schema to be set on tenant configs"
+            )
           end
 
           # Prepare tenant config hash with schema-specific settings
           def prepare_tenant_config_hash(config_hash, base_config, tenant_name)
             schema_name = identifier_for(tenant_name)
-            database_name = base_config.database
+            database_name = extract_base_database_name(base_config)
 
             config_hash.merge(
               schema_search_path: schema_name,
@@ -179,7 +180,7 @@ module ActiveRecord
           end
 
           def identifier_for(tenant_name)
-            sprintf("%{tenant}", tenant: tenant_name.to_s)
+            sprintf(schema_name_pattern, tenant: tenant_name.to_s)
           end
 
         private
@@ -253,14 +254,29 @@ module ActiveRecord
             )
           end
 
-          def extract_base_database_name
-            db_config.database
+          def extract_base_database_name(config = db_config)
+            if config.respond_to?(:test_worker_id) && config.test_worker_id
+              test_workerize(config.database, config.test_worker_id)
+            else
+              config.database
+            end
           end
 
           def schema_name_for(tenant_name)
             # Generate schema name from tenant name
             # Delegate to identifier_for for consistency
             identifier_for(tenant_name)
+          end
+
+          def schema_name_pattern
+            db_config.configuration_hash[:schema_name_pattern] || "account-%{tenant}"
+          end
+
+          def validate_configuration
+            if db_config.database.include?("%{tenant}") && db_config.configuration_hash[:schema_name_pattern]
+              raise ActiveRecord::Tenanted::ConfigurationError,
+                "Cannot specify both a dynamic database name with '%{tenant}' and `schema_name_pattern` for PostgreSQL schema strategy."
+            end
           end
         end
       end

@@ -104,6 +104,10 @@ module ActiveRecord
           def maintenance_db_name
             db_config.configuration_hash[:maintenance_database] || "postgres"
           end
+
+          def current_test_worker_id
+            db_config.respond_to?(:test_worker_id) ? db_config.test_worker_id : nil
+          end
         end
       end
     end

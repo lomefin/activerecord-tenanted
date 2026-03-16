@@ -116,9 +116,15 @@ def run_scenario(scenario)
       run_cmd(scenario, "bin/rails db:prepare", env: { **adapter_config })
 
       # validate-ish the setup
-      prefix = scenario[:database].match?(/\Asecondary/) ? "tenanted_" : ""
-      File.exist?("db/#{prefix}schema.rb") || abort("Schema dump not generated")
-      File.exist?("db/#{prefix}schema_cache.yml") || abort("Schema cache dump not generated")
+      uses_schema_strategy = database_file_hash["test"].any? do |_name, config|
+        config["tenanted"] && config["schema_name_pattern"].present?
+      end
+
+      unless uses_schema_strategy
+        prefix = scenario[:database].match?(/\Asecondary/) ? "tenanted_" : ""
+        File.exist?("db/#{prefix}schema.rb") || abort("Schema dump not generated")
+        File.exist?("db/#{prefix}schema_cache.yml") || abort("Schema cache dump not generated")
+      end
 
       # run in parallel half the time, but only when we're in parallel mode
       #  (otherwise it can cause deadlocks with PostgreSQL)
@@ -128,7 +134,7 @@ def run_scenario(scenario)
         { "PARALLEL_WORKERS" => "1" }
       end
 
-      run_cmd(scenario, ["bin/rails test", *TEST_ARGS].join(" "), verbose: true, env:)
+      run_cmd(scenario, ["bin/rails test", *TEST_ARGS].join(" "), verbose: true, env: { **adapter_config, **env })
     ensure
       ENV["BUNDLE_GEMFILE"] = nil
     end

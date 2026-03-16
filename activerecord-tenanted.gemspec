@@ -9,15 +9,16 @@ Gem::Specification.new do |spec|
   spec.email       = [ "mike@37signals.com" ]
   spec.license     = "MIT"
   spec.homepage    = "https://github.com/basecamp/activerecord-tenanted"
-  spec.summary     = "Enable a Rails application to have separate databases for each tenant."
+  spec.summary     = "Enable a Rails application to host isolated tenants across databases or schemas."
   spec.description = <<~TEXT
-    Enable a Rails application to have separate databases for each tenant.
+    Enable a Rails application to host isolated tenants across databases or schemas.
 
     This gem primarily extends Active Record, creating a new connection pool for each tenant and
-    using horizontal sharding to swap between them. It also provides integrations for middleware
-    tenant selection, Action View Caching, Active Job, Action Cable, Active Storage, Action Mailbox,
-    and Action Text, with support and documentation for Solid Cache, Solid Queue, Solid Cable, and
-    Turbo Rails.
+    using horizontal sharding to swap between them. It supports both database-per-tenant and
+    PostgreSQL schema-per-tenant setups, and also provides integrations for middleware tenant
+    selection, Action View Caching, Active Job, Action Cable, Active Storage, Action Mailbox,
+    and Action Text, with support and documentation for Solid Cache, Solid Queue, Solid Cable,
+    and Turbo Rails.
   TEXT
 
   spec.metadata["homepage_uri"] = spec.homepage

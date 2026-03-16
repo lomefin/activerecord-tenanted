@@ -8,6 +8,7 @@ describe "PostgreSQL Colocated Schema Strategy" do
       test "creates tenants with account- prefixed schema names in a static database" do
         # Verify the configuration is set correctly
         config = TenantedApplicationRecord.tenanted_root_config
+        assert_equal "account-%{tenant}", config.configuration_hash[:schema_name_pattern]
 
         # Database name should not contain %{tenant}
         assert_not config.database.include?("%{tenant}")

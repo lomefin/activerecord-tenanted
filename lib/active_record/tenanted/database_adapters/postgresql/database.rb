@@ -53,8 +53,8 @@ module ActiveRecord
                     tenant_name = match[1]
 
                     # Strip test_worker_id suffix if present
-                    if db_config.test_worker_id
-                      test_worker_suffix = "_#{db_config.test_worker_id}"
+                    if current_test_worker_id
+                      test_worker_suffix = "_#{current_test_worker_id}"
                       tenant_name = tenant_name.delete_suffix(test_worker_suffix)
                     end
 
